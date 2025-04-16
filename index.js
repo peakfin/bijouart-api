@@ -34,22 +34,40 @@ app.get('/', (req, res) => {
 });
 
 // 멤버 데이터 업데이트 및 커밋 API
-app.post('/update-members', async (req, res) => {
-  const newData = req.body;
-  const filePath = path.join(__dirname, 'data/members.json');
+// app.post('/update-members', async (req, res) => {
+//   const newData = req.body;
+//   const filePath = path.join(__dirname, 'data/members.json');
 
-  try {
-    fs.writeFileSync(filePath, JSON.stringify(newData, null, 2), 'utf8');
+//   try {
+//     fs.writeFileSync(filePath, JSON.stringify(newData, null, 2), 'utf8');
 
-    await git.add(filePath);
-    await git.commit(`Update members.json - ${new Date().toISOString()}`);
-    await git.push();
+//     await git.add(filePath);
+//     await git.commit(`Update members.json - ${new Date().toISOString()}`);
+//     await git.push();
 
-    res.json({ success: true, message: '멤버 정보가 커밋되었습니다.' });
-  } catch (err) {
-    console.error('Git 작업 중 오류 발생:', err);
-    res.status(500).json({ success: false, error: 'Git 커밋 또는 push 실패' });
-  }
+//     res.json({ success: true, message: '멤버 정보가 커밋되었습니다.' });
+//   } catch (err) {
+//     console.error('Git 작업 중 오류 발생:', err);
+//     res.status(500).json({ success: false, error: 'Git 커밋 또는 push 실패' });
+//   }
+// });
+
+app.post('/update-members-ts', async (req, res) => {
+    const { content } = req.body;
+    const filePath = path.join(__dirname, '../data/members.ts'); // ts 파일 경로
+
+    try {
+        fs.writeFileSync(filePath, content, 'utf8');
+
+        await git.add(filePath);
+        await git.commit(`Update members.ts - ${new Date().toISOString()}`);
+        await git.push();
+
+        res.json({ success: true, message: 'members.ts 업데이트 및 커밋 완료' });
+    } catch (err) {
+        console.error('Git 작업 오류:', err);
+        res.status(500).json({ success: false, error: 'Git 커밋 실패' });
+    }
 });
 
 app.listen(PORT, () => {

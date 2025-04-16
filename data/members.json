@@ -1,9 +1,0 @@
-[
-    {
-      "name": "홍길동",
-      "instrument": "바이올린",
-      "isLeader": true,
-      "image": "/images/hong.jpg",
-      "description": "소개글입니다."
-    }
-]
