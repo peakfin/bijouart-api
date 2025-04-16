@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 4000;
 
 app.use(cors());
 app.use(express.json());
-
+console.log('Git 리포지토리 체크:', fs.existsSync(path.join(__dirname, '..', '.git')));
 const git = simpleGit({
   baseDir: path.resolve(__dirname, '..'),
   config: [
