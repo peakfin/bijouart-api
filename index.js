@@ -1,10 +1,10 @@
+// index.js (Render API 서버)
 const express = require('express');
 const cors = require('cors');
 const simpleGit = require('simple-git');
 const fs = require('fs');
 const path = require('path');
-const multer = require('multer'); // 이미지 업로드 추가
-const upload = multer({ dest: 'uploads/' });
+const multer = require('multer');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -29,21 +29,24 @@ const git = simpleGit({
   }
 })();
 
-// Root
+// 멀터 설정 (업로드 경로 지정)
+const upload = multer({ dest: path.join(__dirname, '../temp_uploads') });
+
 app.get('/', (req, res) => {
   res.send('Bijouart API Server is running!');
 });
 
-// ✅ members.ts 파일 업데이트 API
 app.post('/update-members-ts', async (req, res) => {
   const { content } = req.body;
   const filePath = path.join(__dirname, '../data/members.ts');
 
   try {
     fs.writeFileSync(filePath, content, 'utf8');
+
     await git.add(filePath);
     await git.commit(`Update members.ts - ${new Date().toISOString()}`);
     await git.push();
+
     res.json({ success: true, message: 'members.ts 업데이트 및 커밋 완료' });
   } catch (err) {
     console.error('Git 작업 오류:', err);
@@ -51,33 +54,28 @@ app.post('/update-members-ts', async (req, res) => {
   }
 });
 
-// ✅ 이미지 업로드 API
-app.post('/upload-member-image', upload.single('image'), async (req, res) => {
-  const file = req.file;
-  const memberName = req.body.name;
-
-  if (!file || !memberName) {
-    return res.status(400).json({ error: '이미지 또는 이름이 누락되었습니다.' });
+app.post('/upload-profile', upload.single('image'), async (req, res) => {
+  if (!req.file || !req.body.filename) {
+    return res.status(400).json({ success: false, error: '파일 또는 이름 누락' });
   }
 
-  const newFilename = `${memberName}.jpg`;
-  const targetDir = path.join(__dirname, '../public/images');
-  const targetPath = path.join(targetDir, newFilename);
+  const originalExt = path.extname(req.file.originalname);
+  const sanitizedFilename = path.basename(req.body.filename, path.extname(req.body.filename));
+  const finalFilename = `${sanitizedFilename}${originalExt}`;
+
+  const tempPath = req.file.path;
+  const targetPath = path.join(__dirname, '../public/images', finalFilename);
 
   try {
-    if (!fs.existsSync(targetDir)) {
-      fs.mkdirSync(targetDir, { recursive: true });
-    }
-
-    fs.renameSync(file.path, targetPath);
+    fs.renameSync(tempPath, targetPath);
 
     await git.add(targetPath);
-    await git.commit(`Upload member image: ${newFilename}`);
+    await git.commit(`Add/Update profile image - ${finalFilename}`);
     await git.push();
 
-    res.json({ success: true, imageUrl: `/images/${newFilename}` });
+    res.json({ success: true, message: '이미지 업로드 및 커밋 완료', filename: finalFilename });
   } catch (err) {
-    console.error('이미지 업로드 중 오류:', err);
+    console.error('이미지 처리 오류:', err);
     res.status(500).json({ success: false, error: '이미지 업로드 실패' });
   }
 });
