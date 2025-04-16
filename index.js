@@ -1,104 +1,119 @@
 const express = require('express');
 const cors = require('cors');
-const simpleGit = require('simple-git');
+const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
-const multer = require('multer');
+const simpleGit = require('simple-git');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// ──────────────────────────────
-// 설정
-// ──────────────────────────────
+const REPO_URL = 'git@github.com:peakfin/bijouart.git';
+const REPO_DIR = path.join(__dirname, 'repo');
+const MEMBERS_TS_PATH = path.join(REPO_DIR, 'data/members.ts');
+const IMAGE_DIR = path.join(REPO_DIR, 'public/images');
+
+// JSON 본문 파싱
 app.use(cors());
 app.use(express.json());
 
-const REPO_DIR = path.join(__dirname, 'repo'); // bijouart 리포 클론 위치
-const IMAGE_DIR = path.join(REPO_DIR, 'public/images'); // 이미지 경로
-const MEMBERS_FILE = path.join(REPO_DIR, 'data/members.ts');
+// Multer 셋업 (메모리 → 디스크)
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
 
-const git = simpleGit(REPO_DIR);
-const upload = multer({ dest: 'uploads/' }); // 임시 저장
+let git = null;
 
-// ──────────────────────────────
-// Git 초기화 & Pull
-// ──────────────────────────────
-async function ensureRepoReady() {
+// ⭐️ 초기 Git repo 설정 (서버 시작 시)
+async function initRepo() {
   if (!fs.existsSync(REPO_DIR)) {
-    console.log('✅ 리포 클론 시작...');
-    await simpleGit().clone('git@github.com:peakfin/bijouart.git', REPO_DIR);
+    console.log('📥 클론 시작...');
+    await simpleGit().clone(REPO_URL, REPO_DIR, ['--depth=1']);
+  } else {
+    console.log('✅ 리포지토리 이미 존재함');
   }
+
+  git = simpleGit({
+    baseDir: REPO_DIR,
+    config: [
+      'core.sshCommand=ssh -i /etc/secrets/render-deploy-key -o StrictHostKeyChecking=no',
+    ],
+  });
 
   await git.addConfig('user.name', 'bijouart-api-bot');
   await git.addConfig('user.email', 'peakfin@naver.com');
-  await git.pull();
+  console.log('✅ Git 설정 완료');
 }
 
-// ──────────────────────────────
-// 라우트
-// ──────────────────────────────
+// 헬스체크
 app.get('/', (req, res) => {
-  res.send('🎻 Bijouart API Server is running!');
+  res.send('Bijouart API Server is running!');
 });
 
-// 1. members.ts 업데이트
+// ✅ members.ts 파일 업데이트 및 커밋
 app.post('/update-members-ts', async (req, res) => {
   const { content } = req.body;
 
+  if (!content) {
+    return res.status(400).json({ error: 'Missing members.ts content' });
+  }
+
   try {
-    await ensureRepoReady();
+    fs.writeFileSync(MEMBERS_TS_PATH, content, 'utf8');
 
-    fs.writeFileSync(MEMBERS_FILE, content, 'utf8');
-
-    const relativePath = path.relative(REPO_DIR, MEMBERS_FILE);
-
-    await git.add(relativePath);
+    await git.pull(); // 최신 상태로 동기화
+    await git.add(MEMBERS_TS_PATH);
     await git.commit(`Update members.ts - ${new Date().toISOString()}`);
     await git.push();
 
-    res.json({ success: true, message: '✅ members.ts 업데이트 완료' });
+    res.json({ success: true, message: 'members.ts 업데이트 및 커밋 완료' });
   } catch (err) {
-    console.error('❌ members.ts 업데이트 실패:', err);
-    res.status(500).json({ error: '업데이트 실패' });
+    console.error('❌ Git 작업 오류:', err);
+    res.status(500).json({ success: false, error: 'Git 커밋 실패' });
   }
 });
 
-// 2. 이미지 업로드 + 커밋
-app.post('/upload-image', upload.single('image'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: '파일이 없습니다.' });
+// ✅ 이미지 업로드 처리 및 커밋
+app.post('/upload-image', upload.single('file'), async (req, res) => {
+  const file = req.file;
+  const filename = req.body.filename;
+
+  if (!file || !filename) {
+    return res.status(400).json({ error: '파일 또는 파일명이 누락되었습니다.' });
+  }
+
+  const ext = path.extname(file.originalname).toLowerCase();
+  const safeName = filename.replace(/[^a-zA-Z0-9가-힣_()-]/g, '');
+  const savePath = path.join(IMAGE_DIR, `${safeName}${ext}`);
 
   try {
-    await ensureRepoReady();
-
-    // 원래 파일 확장자 추출
-    const ext = path.extname(req.file.originalname);
-    const filename = path.basename(req.file.originalname, ext);
-    const finalFilename = `${filename}${ext}`;
-    const finalPath = path.join(IMAGE_DIR, finalFilename);
-
     // 디렉토리 보장
     fs.mkdirSync(IMAGE_DIR, { recursive: true });
 
-    // 이미지 이동
-    fs.renameSync(req.file.path, finalPath);
+    // 파일 저장
+    fs.writeFileSync(savePath, file.buffer);
 
-    const relativeImagePath = path.relative(REPO_DIR, finalPath);
-
-    await git.add(relativeImagePath);
-    await git.commit(`Upload image: ${finalFilename}`);
+    await git.pull(); // 동기화
+    await git.add(savePath);
+    await git.commit(`Upload profile image: ${safeName}${ext}`);
     await git.push();
 
-    res.json({ success: true, filename: finalFilename });
+    res.json({ success: true, url: `/images/${safeName}${ext}` });
   } catch (err) {
     console.error('❌ 이미지 업로드 실패:', err);
-    res.status(500).json({ error: '이미지 업로드 실패' });
+    res.status(500).json({ success: false, error: '이미지 저장 실패' });
   }
 });
 
-// ──────────────────────────────
 // 서버 실행
-// ──────────────────────────────
-app.listen(PORT, () => {
-  console.log(`🚀 API 서버 실행 중: http://localhost:${PORT}`);
-});
+(async () => {
+  try {
+    await initRepo();
+
+    app.listen(PORT, () => {
+      console.log(`🚀 서버 실행 중: http://localhost:${PORT}`);
+    });
+  } catch (err) {
+    console.error('❌ 초기화 실패:', err);
+    process.exit(1);
+  }
+})();
