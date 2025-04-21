@@ -4,6 +4,7 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const simpleGit = require('simple-git');
+const { execSync } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -13,25 +14,27 @@ const REPO_DIR = path.join(__dirname, 'repo');
 const MEMBERS_TS_PATH = path.join(REPO_DIR, 'data/members.ts');
 const IMAGE_DIR = path.join(REPO_DIR, 'public/images');
 
-// JSON 본문 파싱
 app.use(cors());
 app.use(express.json());
 
-// Multer 셋업 (메모리 → 디스크)
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
 let git = null;
 
-// ⭐️ 초기 Git repo 설정 (서버 시작 시)
+// ✅ 초기 Git 리포지토리 클론 및 설정
 async function initRepo() {
   if (!fs.existsSync(REPO_DIR)) {
-    console.log('📥 클론 시작...');
-    await simpleGit().clone(REPO_URL, REPO_DIR, ['--depth=1']);
+    console.log('📥 SSH 옵션으로 클론 실행...');
+    execSync(
+      `GIT_SSH_COMMAND="ssh -i /etc/secrets/render-deploy-key -o StrictHostKeyChecking=no" git clone --depth=1 ${REPO_URL} ${REPO_DIR}`,
+      { stdio: 'inherit' }
+    );
   } else {
     console.log('✅ 리포지토리 이미 존재함');
   }
 
+  // Git 객체 설정
   git = simpleGit({
     baseDir: REPO_DIR,
     config: [
@@ -49,7 +52,7 @@ app.get('/', (req, res) => {
   res.send('Bijouart API Server is running!');
 });
 
-// ✅ members.ts 파일 업데이트 및 커밋
+// ✅ members.ts 업데이트 API
 app.post('/update-members-ts', async (req, res) => {
   const { content } = req.body;
 
@@ -60,7 +63,7 @@ app.post('/update-members-ts', async (req, res) => {
   try {
     fs.writeFileSync(MEMBERS_TS_PATH, content, 'utf8');
 
-    await git.pull(); // 최신 상태로 동기화
+    await git.pull();
     await git.add(MEMBERS_TS_PATH);
     await git.commit(`Update members.ts - ${new Date().toISOString()}`);
     await git.push();
@@ -72,7 +75,7 @@ app.post('/update-members-ts', async (req, res) => {
   }
 });
 
-// ✅ 이미지 업로드 처리 및 커밋
+// ✅ 프로필 이미지 업로드 API
 app.post('/upload-image', upload.single('file'), async (req, res) => {
   const file = req.file;
   const filename = req.body.filename;
@@ -86,13 +89,10 @@ app.post('/upload-image', upload.single('file'), async (req, res) => {
   const savePath = path.join(IMAGE_DIR, `${safeName}${ext}`);
 
   try {
-    // 디렉토리 보장
     fs.mkdirSync(IMAGE_DIR, { recursive: true });
-
-    // 파일 저장
     fs.writeFileSync(savePath, file.buffer);
 
-    await git.pull(); // 동기화
+    await git.pull();
     await git.add(savePath);
     await git.commit(`Upload profile image: ${safeName}${ext}`);
     await git.push();
@@ -104,7 +104,7 @@ app.post('/upload-image', upload.single('file'), async (req, res) => {
   }
 });
 
-// 서버 실행
+// ✅ 서버 시작
 (async () => {
   try {
     await initRepo();
