@@ -14,6 +14,8 @@ const REPO_DIR = path.join(__dirname, 'repo');
 const MEMBERS_TS_PATH = path.join(REPO_DIR, 'data/members.ts');
 const IMAGE_DIR = path.join(REPO_DIR, 'public/images');
 
+const SCHEDULES_TS_PATH = path.join(REPO_DIR, 'data/schedules.ts');
+
 app.use(cors());
 app.use(express.json());
 
@@ -50,6 +52,29 @@ async function initRepo() {
 // 헬스체크
 app.get('/', (req, res) => {
   res.send('Bijouart API Server is running!');
+});
+
+// 🔧 schedules.ts 파일을 덮어쓰고 커밋하는 API
+app.post('/update-schedules-ts', async (req, res) => {
+  const { content } = req.body;
+
+  if (!content) {
+    return res.status(400).json({ error: 'Missing schedules.ts content' });
+  }
+
+  try {
+    fs.writeFileSync(SCHEDULES_TS_PATH, content, 'utf8');
+
+    await git.pull();
+    await git.add(SCHEDULES_TS_PATH);
+    await git.commit(`Update schedules.ts - ${new Date().toISOString()}`);
+    await git.push();
+
+    res.json({ success: true, message: 'schedules.ts 업데이트 및 커밋 완료' });
+  } catch (err) {
+    console.error('❌ 스케줄 Git 작업 오류:', err);
+    res.status(500).json({ success: false, error: 'Git 커밋 실패' });
+  }
 });
 
 // ✅ members.ts 업데이트 API
