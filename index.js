@@ -80,6 +80,10 @@ app.post('/upload-image', upload.single('file'), async (req, res) => {
   const file = req.file;
   const filename = req.body.filename;
 
+  console.log('📦 파일 업로드 요청 도착!');
+  console.log('req.file:', file);
+  console.log('req.body.filename:', filename);
+
   if (!file || !filename) {
     return res.status(400).json({ error: '파일 또는 파일명이 누락되었습니다.' });
   }
@@ -87,6 +91,7 @@ app.post('/upload-image', upload.single('file'), async (req, res) => {
   const ext = path.extname(file.originalname).toLowerCase();
   const safeName = filename.replace(/[^a-zA-Z0-9가-힣_()-]/g, '');
   const savePath = path.join(IMAGE_DIR, `${safeName}${ext}`);
+  console.log('🗂 저장 경로:', savePath);
 
   try {
     fs.mkdirSync(IMAGE_DIR, { recursive: true });
