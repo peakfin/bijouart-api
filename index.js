@@ -14,7 +14,7 @@ const REPO_DIR = path.join(__dirname, 'repo');
 const MEMBERS_TS_PATH = path.join(REPO_DIR, 'data/members.ts');
 const IMAGE_DIR = path.join(REPO_DIR, 'public/images');
 
-const SCHEDULES_TS_PATH = path.join(REPO_DIR, 'data/schedules.ts');
+const SCHEDULES_TS_PATH = path.join(REPO_DIR, 'data/schedule-data.ts');
 
 app.use(cors());
 app.use(express.json());
